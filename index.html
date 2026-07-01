@@ -2520,7 +2520,7 @@ async function exportReport() {
     ws.getRow(4).height = 36;
 
     // ===== 表頭(第 5 行) =====
-    const headers = ['日期', '星期', '上班時間', '下班時間', '備註', '請假時數', '扣薪', '稽核', '稽核扣薪'];
+    const headers = ['日期', '星期', '上班時間', '下班時間', '時數', '備註', '請假時數', '扣薪', '稽核', '稽核扣薪'];
     const headerR = ws.getRow(5);
     headers.forEach((h, i) => {
       const cell = headerR.getCell(i + 1);
@@ -2530,8 +2530,8 @@ async function exportReport() {
       cell.alignment = { horizontal: 'center', vertical: 'middle' };
     });
     // 稽核兩欄表頭紅字
-    headerR.getCell(8).font = { bold: true, color: { argb: 'FFFFC0C0' } };
     headerR.getCell(9).font = { bold: true, color: { argb: 'FFFFC0C0' } };
+    headerR.getCell(10).font = { bold: true, color: { argb: 'FFFFC0C0' } };
     headerR.height = 22;
 
     // 日期欄強制文字格式(避免 Excel 自動轉 3/1/26)
@@ -2622,11 +2622,22 @@ async function exportReport() {
         outCell.font = { color: { argb: 'FFBBBBBB' } };
       }
 
-      const descCell = row.getCell(5);
+      // 時數 = 下班時間 − 上班時間(四捨五入至小數點後一位)
+      const workHrCell = row.getCell(5);
+      if (r && r.punchIn && r.punchOut) {
+        const [wih, wim] = r.punchIn.split(':').map(Number);
+        const [woh, wom] = r.punchOut.split(':').map(Number);
+        const diffMin = (woh * 60 + wom) - (wih * 60 + wim);
+        if (diffMin > 0) workHrCell.value = Math.round(diffMin / 6) / 10;
+      }
+      workHrCell.alignment = { horizontal: 'right', vertical: 'middle' };
+      workHrCell.numFmt = '0.0';
+
+      const descCell = row.getCell(6);
       descCell.value = leaveDesc || '';
       descCell.alignment = { horizontal: 'left', vertical: 'middle' };
 
-      const hoursCell = row.getCell(6);
+      const hoursCell = row.getCell(7);
       if (leaveHoursNum > 0) {
         hoursCell.value = leaveHoursNum;
         hoursCell.font = { color: { argb: 'FFD43F3A' }, bold: true };
@@ -2634,7 +2645,7 @@ async function exportReport() {
       hoursCell.alignment = { horizontal: 'right', vertical: 'middle' };
       hoursCell.numFmt = '0.##';
 
-      const dedCell = row.getCell(7);
+      const dedCell = row.getCell(8);
       if (deductNum > 0) {
         dedCell.value = -deductNum;
         dedCell.font = { color: { argb: 'FFD43F3A' }, bold: true };
@@ -2645,7 +2656,7 @@ async function exportReport() {
       // 週末淡灰底
       const wd = jsDate.getDay();
       if (wd === 0 || wd === 6) {
-        for (let c = 1; c <= 7; c++) {
+        for (let c = 1; c <= 8; c++) {
           row.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFF5F5F0' } };
         }
         wdCell.font = { color: { argb: 'FFC9A961' }, bold: true };
@@ -2667,8 +2678,8 @@ async function exportReport() {
       //   - 漏打卡日(缺卡+無備註) — 已由 V3 漏打卡扣薪處理
       //   - 只缺一張卡 — 視為忘打卡,員工實際有上班(例如只打了上班卡但有加班備註)
       //   - 稽核時數 < 0.5hr — 避免打卡時間零星誤差造成的小扣款
-      const auditCell = row.getCell(8);
-      const auditDedCell = row.getCell(9);
+      const auditCell = row.getCell(9);
+      const auditDedCell = row.getCell(10);
       auditCell.alignment = { horizontal: 'right', vertical: 'middle' };
       auditCell.numFmt = '0.##';
       auditDedCell.alignment = { horizontal: 'right', vertical: 'middle' };
@@ -2779,7 +2790,7 @@ async function exportReport() {
       // 該日有稽核扣款 → 整列淺藍底(覆蓋週末灰底)
       if (hasAuditDeduct) {
         const auditFill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFD6EAF8' } };
-        for (let c = 1; c <= 9; c++) {
+        for (let c = 1; c <= 10; c++) {
           row.getCell(c).fill = auditFill;
         }
       }
@@ -2791,37 +2802,37 @@ async function exportReport() {
     const lastDataRow = rowIdx - 1;
     const totalRow = ws.getRow(rowIdx);
     totalRow.getCell(1).value = '合計';
-    ws.mergeCells(rowIdx, 1, rowIdx, 5);
+    ws.mergeCells(rowIdx, 1, rowIdx, 6);
     totalRow.getCell(1).alignment = { horizontal: 'right', vertical: 'middle' };
     totalRow.getCell(1).font = { bold: true };
 
-    const sumH = totalRow.getCell(6);
-    sumH.value = { formula: `SUM(F6:F${lastDataRow})`, result: 0 };
+    const sumH = totalRow.getCell(7);
+    sumH.value = { formula: `SUM(G6:G${lastDataRow})`, result: 0 };
     sumH.font = { color: { argb: 'FFD43F3A' }, bold: true };
     sumH.alignment = { horizontal: 'right', vertical: 'middle' };
     sumH.numFmt = '0.##';
 
-    const sumD = totalRow.getCell(7);
-    sumD.value = { formula: `SUM(G6:G${lastDataRow})`, result: 0 };
+    const sumD = totalRow.getCell(8);
+    sumD.value = { formula: `SUM(H6:H${lastDataRow})`, result: 0 };
     sumD.font = { color: { argb: 'FFD43F3A' }, bold: true };
     sumD.alignment = { horizontal: 'right', vertical: 'middle' };
     sumD.numFmt = '#,##0';
 
     // 稽核合計
-    const sumAudit = totalRow.getCell(8);
-    sumAudit.value = { formula: `SUM(H6:H${lastDataRow})`, result: 0 };
+    const sumAudit = totalRow.getCell(9);
+    sumAudit.value = { formula: `SUM(I6:I${lastDataRow})`, result: 0 };
     sumAudit.font = { color: { argb: 'FFD43F3A' }, bold: true };
     sumAudit.alignment = { horizontal: 'right', vertical: 'middle' };
     sumAudit.numFmt = '0.##';
 
-    const sumAuditDed = totalRow.getCell(9);
-    sumAuditDed.value = { formula: `SUM(I6:I${lastDataRow})`, result: 0 };
+    const sumAuditDed = totalRow.getCell(10);
+    sumAuditDed.value = { formula: `SUM(J6:J${lastDataRow})`, result: 0 };
     sumAuditDed.font = { color: { argb: 'FFD43F3A' }, bold: true };
     sumAuditDed.alignment = { horizontal: 'right', vertical: 'middle' };
     sumAuditDed.numFmt = '#,##0';
 
-    // 總計列底色延伸到 9 欄
-    for (let c = 1; c <= 9; c++) {
+    // 總計列底色延伸到 10 欄
+    for (let c = 1; c <= 10; c++) {
       totalRow.getCell(c).fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FFFFF9EE' } };
     }
     totalRow.height = 22;
@@ -2831,11 +2842,12 @@ async function exportReport() {
     ws.getColumn(2).width = 6;
     ws.getColumn(3).width = 11;
     ws.getColumn(4).width = 11;
-    ws.getColumn(5).width = 46;
-    ws.getColumn(6).width = 10;
-    ws.getColumn(7).width = 12;
-    ws.getColumn(8).width = 8;   // 稽核
-    ws.getColumn(9).width = 11;  // 稽核扣薪
+    ws.getColumn(5).width = 8;   // 時數
+    ws.getColumn(6).width = 46;
+    ws.getColumn(7).width = 10;
+    ws.getColumn(8).width = 12;
+    ws.getColumn(9).width = 8;    // 稽核
+    ws.getColumn(10).width = 11;  // 稽核扣薪
   }
 
   // ========== 下載 ==========
@@ -3361,6 +3373,15 @@ function renderEmployeeSheetTable(name) {
     sumLeaveHr += leaveHrNum; sumDeduct += deductNum;
     sumAuditHr += auditHrNum; sumAuditDed += auditDedNum;
 
+    // 時數 = 下班時間 − 上班時間(四捨五入至小數點後一位)
+    let workHrDisplay = '';
+    if (hasIn && hasOut) {
+      const [wih, wim] = r.punchIn.split(':').map(Number);
+      const [woh, wom] = r.punchOut.split(':').map(Number);
+      const diffMin = (woh * 60 + wom) - (wih * 60 + wim);
+      if (diffMin > 0) workHrDisplay = (Math.round(diffMin / 6) / 10).toFixed(1);
+    }
+
     const trBg = isWeekend ? 'background:#f5f5f0' : '';
     const rowStyle = auditHrNum > 0 ? 'background:#d6eaf8' : trBg;
     const inClr = (hasIn !== hasOut) ? 'color:#d43f3a;font-weight:700' : (!hasIn ? 'color:#ccc' : '');
@@ -3371,6 +3392,7 @@ function renderEmployeeSheetTable(name) {
         <td style="text-align:center">${wLabel}</td>
         <td style="text-align:center;${inClr}">${inT}</td>
         <td style="text-align:center;${outClr}">${outT}</td>
+        <td class="num">${workHrDisplay}</td>
         <td>${esc(noteText)}</td>
         <td class="num">${leaveHrNum > 0 ? leaveHrNum : ''}</td>
         <td class="num neg">${deductNum > 0 ? '-' + deductNum.toLocaleString() : ''}</td>
@@ -3391,6 +3413,7 @@ function renderEmployeeSheetTable(name) {
           <th style="min-width:40px">星期</th>
           <th style="min-width:70px">上班時間</th>
           <th style="min-width:70px">下班時間</th>
+          <th style="min-width:60px">時數</th>
           <th style="min-width:320px">備註</th>
           <th style="min-width:70px">請假時數</th>
           <th style="min-width:80px">扣薪</th>
@@ -3401,7 +3424,7 @@ function renderEmployeeSheetTable(name) {
       <tbody>
         ${rows}
         <tr style="background:#fff9ee;font-weight:700">
-          <td colspan="5" style="text-align:right">合計</td>
+          <td colspan="6" style="text-align:right">合計</td>
           <td class="num">${sumLeaveHr > 0 ? Math.round(sumLeaveHr * 100) / 100 : ''}</td>
           <td class="num neg">${sumDeduct > 0 ? '-' + sumDeduct.toLocaleString() : ''}</td>
           <td class="num">${sumAuditHr > 0 ? Math.round(sumAuditHr * 100) / 100 : ''}</td>
